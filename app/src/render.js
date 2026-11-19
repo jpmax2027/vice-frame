@@ -1,192 +1,241 @@
-import { getPanels, mastheadAnchor } from './layouts.js';
-import { applyGrade, backdropColors } from './grade.js';
-import { drawMasthead, drawScriptLine, drawCaptionBar, drawStarMeter, drawBadge } from './lettering.js';
-import { findPhoto } from './state.js';
-let noiseCanvas = null;
-function getNoiseCanvas() {
-  if (noiseCanvas) {
-    return noiseCanvas;
-  }
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 256;
-  const nctx = c.getContext('2d');
-  const imgData = nctx.createImageData(256, 256);
-  const data = imgData.data;
-  for (let i = 0; i < data.length; i = i + 4) {
-    const v = Math.floor(Math.random() * 255);
-    data[i] = v;
-    data[i + 1] = v;
-    data[i + 2] = v;
-    data[i + 3] = 255;
-  }
-  nctx.putImageData(imgData, 0, 0);
-  noiseCanvas = c;
-  return c;
+// Leonida Sunset Studio — the cover renderer.
+// Draws the whole poster onto any 2D canvas at any size: graded photo
+// panels with white poster gutters, a big Anton masthead with a Pacifico
+// script accent, a caption bar, a wanted-style star meter and a round
+// badge stamp. Everything is drawn from the state object, so the live
+// preview and the exported PNG are the same picture at two sizes.
+
+import { layoutById } from './layouts.js';
+import { gradeById, applyGradeToImageData } from './grades.js';
+
+export const EXPORT_SIZES = [
+  { id: 'square', name: 'Square post · 1080 × 1080', w: 1080, h: 1080 },
+  { id: 'portrait', name: 'Portrait post · 1080 × 1350', w: 1080, h: 1350 },
+  { id: 'wide', name: 'Wide banner · 1920 × 1080', w: 1920, h: 1080 },
+  { id: 'story', name: 'Story · 1080 × 1920', w: 1080, h: 1920 },
+];
+
+/** Finds an export size by id, falling back to the square post. */
+export function exportSizeById(id) {
+  return EXPORT_SIZES.find((size) => size.id === id) ?? EXPORT_SIZES[0];
 }
-function drawCoverFit(ctx, img, x, y, w, h, view) {
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
-  if (!iw || !ih) {
-    return;
-  }
-  const zoom = view ? view.zoom : 1;
-  const scale = Math.max(w / iw, h / ih) * zoom;
-  const dw = iw * scale;
-  const dh = ih * scale;
-  const dx = view ? view.dx : 0;
-  const dy = view ? view.dy : 0;
-  const px = x + (w - dw) / 2 + dx * w * 0.4;
-  const py = y + (h - dh) / 2 + dy * h * 0.4;
-  ctx.drawImage(img, px, py, dw, dh);
+
+/** Default per-panel framing: centred, no extra zoom. */
+export function freshPanelFraming() {
+  return { photoIndex: 0, offsetX: 0, offsetY: 0, zoom: 1 };
 }
-export function renderCover(ctx, state, W, H) {
-  const panels = getPanels(state.layoutId, W, H);
-  const colors = backdropColors(state.gradeId);
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, colors[0]);
-  grad.addColorStop(0.55, colors[1]);
-  grad.addColorStop(1, colors[2]);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-  if (state.gradeId === 'vice-sunset') {
-    const sunR = Math.round(W * 0.3);
-    const sunX = W * 0.72;
-    const sunY = H * 0.3;
-    const sunGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR);
-    sunGrad.addColorStop(0, 'rgba(255, 214, 120, 0.95)');
-    sunGrad.addColorStop(0.55, 'rgba(255, 130, 60, 0.75)');
-    sunGrad.addColorStop(1, 'rgba(255, 80, 80, 0)');
-    ctx.fillStyle = sunGrad;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255, 240, 200, 0.95)';
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR * 0.34, 0, Math.PI * 2);
-    ctx.fill();
+
+/**
+ * Draws one photo into a panel rectangle with cover-fit maths, honouring
+ * the panel framing (offset in panel fractions, zoom multiplier), grades
+ * the pixels on a scratch canvas, then paints the result clipped to the
+ * panel so neighbouring panels never bleed into each other.
+ */
+function drawGradedPanel(ctx, scratch, photo, rect, framing, grade) {
+  const pw = Math.max(2, Math.round(rect.w));
+  const ph = Math.max(2, Math.round(rect.h));
+  scratch.width = pw;
+  scratch.height = ph;
+  const sctx = scratch.getContext('2d', { willReadFrequently: true });
+  sctx.fillStyle = '#241430';
+  sctx.fillRect(0, 0, pw, ph);
+  if (photo) {
+    const baseScale = Math.max(pw / photo.naturalWidth, ph / photo.naturalHeight);
+    const scale = baseScale * Math.max(1, framing.zoom || 1);
+    const drawnW = photo.naturalWidth * scale;
+    const drawnH = photo.naturalHeight * scale;
+    const dx = (pw - drawnW) / 2 + (framing.offsetX || 0) * pw;
+    const dy = (ph - drawnH) / 2 + (framing.offsetY || 0) * ph;
+    sctx.drawImage(photo, dx, dy, drawnW, drawnH);
   }
-  const keyline = Math.max(3, Math.round(W * 0.006));
-  for (let i = 0; i < panels.length; i = i + 1) {
-    const panel = panels[i];
-    if (panel.isTitleBlock) {
-      ctx.save();
-      ctx.fillStyle = '#12081f';
-      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
-      const innerGrad = ctx.createLinearGradient(panel.x, panel.y, panel.x, panel.y + panel.h);
-      innerGrad.addColorStop(0, 'rgba(255,46,136,0.35)');
-      innerGrad.addColorStop(1, 'rgba(20,8,36,0.1)');
-      ctx.fillStyle = innerGrad;
-      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
-      ctx.restore();
-      continue;
-    }
-    const photoId = state.panelPhoto[i];
-    const photo = photoId !== null && photoId !== undefined ? findPhoto(state, photoId) : null;
-    const view = state.panelView[i] || { dx: 0, dy: 0, zoom: 1 };
-    ctx.save();
-    if (panel.rotation) {
-      const cx = panel.x + panel.w / 2;
-      const cy = panel.y + panel.h / 2;
-      ctx.translate(cx, cy);
-      ctx.rotate(panel.rotation);
-      ctx.translate(-cx, -cy);
-      ctx.shadowColor = 'rgba(0,0,0,0.55)';
-      ctx.shadowBlur = Math.round(W * 0.02);
-      ctx.shadowOffsetY = Math.round(H * 0.012);
-    }
-    ctx.beginPath();
-    ctx.rect(panel.x, panel.y, panel.w, panel.h);
-    ctx.clip();
-    if (photo && photo.img) {
-      const tmp = document.createElement('canvas');
-      tmp.width = Math.max(2, Math.round(panel.w));
-      tmp.height = Math.max(2, Math.round(panel.h));
-      const tctx = tmp.getContext('2d');
-      tctx.fillStyle = '#1a1028';
-      tctx.fillRect(0, 0, tmp.width, tmp.height);
-      drawCoverFit(tctx, photo.img, 0, 0, tmp.width, tmp.height, view);
-      const graded = applyGrade(tmp, state.gradeId, state.gradeStrength);
-      ctx.drawImage(graded, panel.x, panel.y, panel.w, panel.h);
-    } else {
-      const ph = ctx.createLinearGradient(panel.x, panel.y, panel.x + panel.w, panel.y + panel.h);
-      ph.addColorStop(0, '#2a1a4d');
-      ph.addColorStop(1, '#0e2a3a');
-      ctx.fillStyle = ph;
-      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.font = '400 ' + Math.round(panel.w * 0.07 + 12) + 'px ' + "'Anton', sans-serif";
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(panel.label.toUpperCase(), panel.x + panel.w / 2, panel.y + panel.h / 2);
-    }
-    ctx.restore();
-    ctx.save();
-    if (panel.rotation) {
-      const cx2 = panel.x + panel.w / 2;
-      const cy2 = panel.y + panel.h / 2;
-      ctx.translate(cx2, cy2);
-      ctx.rotate(panel.rotation);
-      ctx.translate(-cx2, -cy2);
-    }
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = keyline;
-    ctx.strokeRect(panel.x, panel.y, panel.w, panel.h);
-    ctx.strokeStyle = 'rgba(255, 46, 136, 0.55)';
-    ctx.lineWidth = Math.max(1, Math.round(keyline / 2));
-    ctx.strokeRect(panel.x - keyline, panel.y - keyline, panel.w + keyline * 2, panel.h + keyline * 2);
-    ctx.restore();
-  }
-  const anchor = mastheadAnchor(state.layoutId, W, H);
-  const texts = state.texts;
-  if (anchor.mode === 'centre') {
-    const block = panels[4];
-    if (block) {
-      const mw = block.w * 1.35;
-      const res = drawMasthead(ctx, texts, block.x + block.w / 2, block.y + block.h * 0.14, mw, 'center');
-      drawScriptLine(ctx, texts.scriptLine, block.x + block.w / 2, res.bottom + block.h * 0.03, mw, 'center');
-    }
-  } else if (anchor.mode === 'lower-left') {
-    const mw = W * 0.72;
-    const res = drawMasthead(ctx, texts, anchor.x, anchor.y, mw, 'left');
-    drawScriptLine(ctx, texts.scriptLine, anchor.x + W * 0.01, res.bottom + H * 0.01, mw, 'left');
-  } else if (anchor.mode === 'top-centre') {
-    const mw = W * 0.86;
-    ctx.save();
-    ctx.fillStyle = 'rgba(8, 4, 16, 0.42)';
-    ctx.fillRect(0, 0, W, H * 0.3);
-    ctx.restore();
-    const res = drawMasthead(ctx, texts, anchor.x, anchor.y + H * 0.015, mw, 'center');
-    drawScriptLine(ctx, texts.scriptLine, anchor.x, res.bottom + H * 0.008, mw, 'center');
-  } else {
-    const mw = W * 0.88;
-    ctx.save();
-    const shade = ctx.createLinearGradient(0, 0, 0, H * 0.34);
-    shade.addColorStop(0, 'rgba(8, 4, 16, 0.62)');
-    shade.addColorStop(1, 'rgba(8, 4, 16, 0)');
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, 0, W, H * 0.34);
-    ctx.restore();
-    const res = drawMasthead(ctx, texts, anchor.x, anchor.y + H * 0.012, mw, 'center');
-    drawScriptLine(ctx, texts.scriptLine, anchor.x, res.bottom + H * 0.006, mw, 'center');
-  }
-  drawStarMeter(ctx, texts.stars, W * 0.045, H * 0.045, Math.round(W * 0.032));
-  const badgeR = Math.round(Math.min(W, H) * 0.085);
-  drawBadge(ctx, texts.badgeText, W - badgeR - W * 0.03, badgeR + H * 0.025, badgeR);
-  drawCaptionBar(ctx, texts.caption, W, H);
-  const noise = getNoiseCanvas();
+  const pixels = sctx.getImageData(0, 0, pw, ph);
+  applyGradeToImageData(pixels, grade);
+  sctx.putImageData(pixels, 0, 0);
   ctx.save();
-  ctx.globalAlpha = 0.05;
-  const pat = ctx.createPattern(noise, 'repeat');
-  ctx.fillStyle = pat;
-  ctx.fillRect(0, 0, W, H);
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  ctx.clip();
+  ctx.drawImage(scratch, rect.x, rect.y);
   ctx.restore();
-  const vig = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.78);
-  vig.addColorStop(0, 'rgba(0,0,0,0)');
-  vig.addColorStop(1, 'rgba(0,0,0,0.42)');
-  ctx.fillStyle = vig;
-  ctx.fillRect(0, 0, W, H);
 }
-export function getNoiseForTest() {
-  return getNoiseCanvas();
+
+/** Draws one five-point star centred at (cx, cy). */
+function drawStar(ctx, cx, cy, radius, filled) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i += 1) {
+    const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rad = i % 2 === 0 ? radius : radius * 0.45;
+    const px = cx + Math.cos(angle) * rad;
+    const py = cy + Math.sin(angle) * rad;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  if (filled) {
+    ctx.fillStyle = '#ffc933';
+    ctx.fill();
+  }
+  ctx.lineWidth = radius * 0.14;
+  ctx.strokeStyle = '#ffc933';
+  ctx.stroke();
+}
+
+/** Draws the wanted-style star meter: `heat` filled stars out of five. */
+function drawStarMeter(ctx, x, y, radius, heat) {
+  const step = radius * 2.5;
+  for (let i = 0; i < 5; i += 1) {
+    drawStar(ctx, x + i * step, y, radius, i < heat);
+  }
+}
+
+/** Draws the round badge stamp with two short lines of lettering. */
+function drawBadgeStamp(ctx, cx, cy, radius, topText, bottomText) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.16);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#e63950';
+  ctx.fill();
+  ctx.lineWidth = radius * 0.09;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.78, 0, Math.PI * 2);
+  ctx.lineWidth = radius * 0.045;
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(radius * 0.34)}px Anton, sans-serif`;
+  ctx.fillText(topText, 0, -radius * 0.2);
+  ctx.font = `${Math.round(radius * 0.27)}px Anton, sans-serif`;
+  ctx.fillText(bottomText, 0, radius * 0.22);
+  ctx.restore();
+}
+
+/** Shrinks a font size until the text fits the given width. */
+function fitFontSize(ctx, text, maxWidth, startSize, family) {
+  let size = startSize;
+  ctx.font = `${size}px ${family}`;
+  while (ctx.measureText(text).width > maxWidth && size > 10) {
+    size -= 2;
+    ctx.font = `${size}px ${family}`;
+  }
+  return size;
+}
+
+/**
+ * Renders the full cover described by `state` onto `canvas` at the
+ * canvas's own pixel size. `state` carries: layoutId, gradeId, title,
+ * accent, caption, badgeTop, badgeBottom, heat (0..5), panels (framing
+ * per layout panel) and photos (loaded images, by library index).
+ */
+export function drawCoverArt(canvas, state) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const layout = layoutById(state.layoutId);
+  const grade = gradeById(state.gradeId);
+  const scratch = document.createElement('canvas');
+
+  ctx.fillStyle = '#1b0f26';
+  ctx.fillRect(0, 0, W, H);
+
+  layout.panels.forEach((panel, index) => {
+    const framing = state.panels[index] ?? freshPanelFraming();
+    const photo = state.photos[framing.photoIndex] ?? state.photos[0] ?? null;
+    drawGradedPanel(ctx, scratch, photo, {
+      x: panel.x * W,
+      y: panel.y * H,
+      w: panel.w * W,
+      h: panel.h * H,
+    }, framing, grade);
+  });
+
+  // White poster gutters between and around the panels.
+  const gutter = Math.max(3, W * 0.007);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = gutter;
+  layout.panels.forEach((panel) => {
+    ctx.strokeRect(panel.x * W, panel.y * H, panel.w * W, panel.h * H);
+  });
+  ctx.strokeRect(0, 0, W, H);
+
+  // Sunset scrim behind the masthead so lettering always reads.
+  const scrim = ctx.createLinearGradient(0, 0, 0, H * 0.34);
+  scrim.addColorStop(0, 'rgba(20, 6, 32, 0.72)');
+  scrim.addColorStop(1, 'rgba(20, 6, 32, 0)');
+  ctx.fillStyle = scrim;
+  ctx.fillRect(0, 0, W, H * 0.34);
+
+  // Masthead: big Anton capitals, white over a hard pink offset shadow.
+  const title = (state.title || '').trim().toUpperCase();
+  if (title) {
+    const size = fitFontSize(ctx, title, W * 0.92, H * 0.16, 'Anton, sans-serif');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = `${size}px Anton, sans-serif`;
+    ctx.fillStyle = '#ff2e88';
+    ctx.fillText(title, W / 2 + size * 0.045, H * 0.035 + size * 0.045);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(title, W / 2, H * 0.035);
+  }
+
+  // Script accent word, tilted, tucked under the masthead.
+  const accent = (state.accent || '').trim();
+  if (accent) {
+    ctx.save();
+    ctx.translate(W * 0.68, H * 0.155);
+    ctx.rotate(-0.07);
+    const size = fitFontSize(ctx, accent, W * 0.5, H * 0.075, 'Pacifico, cursive');
+    ctx.font = `${size}px Pacifico, cursive`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = size * 0.18;
+    ctx.fillStyle = '#ffd166';
+    ctx.fillText(accent, 0, 0);
+    ctx.restore();
+  }
+
+  drawBadgeStamp(
+    ctx,
+    W * 0.885,
+    H * 0.76,
+    Math.min(W, H) * 0.085,
+    (state.badgeTop || 'LEONIDA').toUpperCase(),
+    (state.badgeBottom || 'EST. 2026').toUpperCase(),
+  );
+
+  // Caption bar along the foot: caption left, star meter right.
+  const barH = H * 0.095;
+  ctx.fillStyle = 'rgba(10, 4, 18, 0.92)';
+  ctx.fillRect(0, H - barH, W, barH);
+  ctx.fillStyle = '#ff2e88';
+  ctx.fillRect(0, H - barH, W, Math.max(3, H * 0.006));
+  const caption = (state.caption || '').trim().toUpperCase();
+  if (caption) {
+    const size = fitFontSize(ctx, caption, W * 0.62, barH * 0.52, 'Anton, sans-serif');
+    ctx.font = `${size}px Anton, sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(caption, W * 0.035, H - barH / 2 + 1);
+  }
+  drawStarMeter(ctx, W * 0.735, H - barH / 2, barH * 0.26, state.heat ?? 4);
+
+  // Selected panel outline, only for the editor preview.
+  if (typeof state.selectedPanel === 'number' && state.showSelection) {
+    const panel = layout.panels[state.selectedPanel];
+    if (panel) {
+      ctx.save();
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = Math.max(3, W * 0.006);
+      ctx.setLineDash([W * 0.02, W * 0.012]);
+      ctx.strokeRect(panel.x * W + 4, panel.y * H + 4, panel.w * W - 8, panel.h * H - 8);
+      ctx.restore();
+    }
+  }
+  return canvas;
 }
