@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vice Frame — Cover Art Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app-shell">
+<header id="topbar">
+<div class="brand">
+<span class="brand-mark">VF</span>
+<span class="brand-name">Vice Frame</span>
+<span class="brand-sub">cover art studio</span>
+</div>
+<div class="top-actions">
+<span id="size-readout" class="size-readout">1080 × 1080</span>
+<button id="export-btn" type="button" class="export-btn">Export PNG</button>
+</div>
+</header>
+<main id="workspace">
+<section id="stage-wrap">
+<div id="stage">
+<canvas id="preview" width="1080" height="1080"></canvas>
+<div id="stage-hint">Drag on the canvas to pan the selected panel · Click a panel in the list to select it</div>
+</div>
+</section>
+<aside id="rail">
+<section class="panel-block">
+<h2>Photos</h2>
+<div class="row gap">
+<button id="upload-btn" type="button">Upload photo</button>
+<button id="sample-boulevard-btn" type="button">+ Boulevard</button>
+<button id="sample-pier-btn" type="button">+ Pier</button>
+</div>
+<div id="photo-list" class="photo-list"></div>
+<h3 class="mini-head">Panels</h3>
+<div id="panel-list" class="panel-list"></div>
+<div class="row gap">
+<label class="field grow">Zoom <input id="zoom-range" type="range" min="1" max="3" step="0.01" value="1"></label>
+</div>
+<div class="row gap">
+<button id="center-btn" type="button">Centre photo</button>
+<button id="fill-all-btn" type="button">Fill all panels</button>
+</div>
+<p class="note">Photos stay on this device. Nothing is uploaded.</p>
+</section>
+<section class="panel-block">
+<h2>Layout</h2>
+<div id="layout-picker" class="picker"></div>
+</section>
+<section class="panel-block">
+<h2>Colour Grade</h2>
+<div id="grade-picker" class="picker"></div>
+<label class="field">Grade strength <input id="grade-strength" type="range" min="0" max="1" step="0.01" value="0.9"></label>
+</section>
+<section class="panel-block">
+<h2>Lettering</h2>
+<label class="field">Title top <input id="text-titleTop" type="text" maxlength="24"></label>
+<label class="field">Title main <input id="text-titleMain" type="text" maxlength="24"></label>
+<label class="field">Script line <input id="text-scriptLine" type="text" maxlength="40"></label>
+<label class="field">Caption <input id="text-caption" type="text" maxlength="48"></label>
+<label class="field">Badge text <input id="text-badgeText" type="text" maxlength="24"></label>
+<div class="row gap align-center">
+<span class="field-label">Stars</span>
+<button id="stars-minus" type="button">−</button>
+<span id="stars-value">5</span>
+<button id="stars-plus" type="button">+</button>
+</div>
+</section>
+<section class="panel-block">
+<h2>Post Size</h2>
+<div id="size-picker" class="picker"></div>
+</section>
+<section class="panel-block">
+<h2>Export</h2>
+<p class="note">Renders the cover at the chosen post size and downloads it as a PNG.</p>
+<button id="export-btn-2" type="button" class="export-btn wide">Download PNG</button>
+</section>
+</aside>
+</main>
+</div>
+<input id="file-input" type="file" accept="image/*" multiple hidden>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
