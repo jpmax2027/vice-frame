@@ -1,87 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vice Frame — Cover Art Studio</title>
-<link rel="stylesheet" href="style.css">
+<title>Leonida Sunset Studio — GTA-style cover art maker</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div id="app-shell">
-<header id="topbar">
-<div class="brand">
-<span class="brand-mark">VF</span>
-<span class="brand-name">Vice Frame</span>
-<span class="brand-sub">cover art studio</span>
-</div>
-<div class="top-actions">
-<span id="size-readout" class="size-readout">1080 × 1080</span>
-<button id="export-btn" type="button" class="export-btn">Export PNG</button>
-</div>
-</header>
-<main id="workspace">
-<section id="stage-wrap">
-<div id="stage">
-<canvas id="preview" width="1080" height="1080"></canvas>
-<div id="stage-hint">Drag on the canvas to pan the selected panel · Click a panel in the list to select it</div>
-</div>
-</section>
-<aside id="rail">
-<section class="panel-block">
-<h2>Photos</h2>
-<div class="row gap">
-<button id="upload-btn" type="button">Upload photo</button>
-<button id="sample-boulevard-btn" type="button">+ Boulevard</button>
-<button id="sample-pier-btn" type="button">+ Pier</button>
-</div>
-<div id="photo-list" class="photo-list"></div>
-<h3 class="mini-head">Panels</h3>
-<div id="panel-list" class="panel-list"></div>
-<div class="row gap">
-<label class="field grow">Zoom <input id="zoom-range" type="range" min="1" max="3" step="0.01" value="1"></label>
-</div>
-<div class="row gap">
-<button id="center-btn" type="button">Centre photo</button>
-<button id="fill-all-btn" type="button">Fill all panels</button>
-</div>
-<p class="note">Photos stay on this device. Nothing is uploaded.</p>
-</section>
-<section class="panel-block">
-<h2>Layout</h2>
-<div id="layout-picker" class="picker"></div>
-</section>
-<section class="panel-block">
-<h2>Colour Grade</h2>
-<div id="grade-picker" class="picker"></div>
-<label class="field">Grade strength <input id="grade-strength" type="range" min="0" max="1" step="0.01" value="0.9"></label>
-</section>
-<section class="panel-block">
-<h2>Lettering</h2>
-<label class="field">Title top <input id="text-titleTop" type="text" maxlength="24"></label>
-<label class="field">Title main <input id="text-titleMain" type="text" maxlength="24"></label>
-<label class="field">Script line <input id="text-scriptLine" type="text" maxlength="40"></label>
-<label class="field">Caption <input id="text-caption" type="text" maxlength="48"></label>
-<label class="field">Badge text <input id="text-badgeText" type="text" maxlength="24"></label>
-<div class="row gap align-center">
-<span class="field-label">Stars</span>
-<button id="stars-minus" type="button">−</button>
-<span id="stars-value">5</span>
-<button id="stars-plus" type="button">+</button>
-</div>
-</section>
-<section class="panel-block">
-<h2>Post Size</h2>
-<div id="size-picker" class="picker"></div>
-</section>
-<section class="panel-block">
-<h2>Export</h2>
-<p class="note">Renders the cover at the chosen post size and downloads it as a PNG.</p>
-<button id="export-btn-2" type="button" class="export-btn wide">Download PNG</button>
-</section>
-</aside>
+<main class="shell">
+  <aside class="panel" id="controlPanel">
+    <header class="brand">
+      <h1>Leonida Sunset Studio</h1>
+      <p>Turn any photo into multi-panel, GTA-poster-style cover art. Everything runs on this machine — photos are never uploaded.</p>
+    </header>
+
+    <section class="card" id="photoCard">
+      <h2>1 · Photos</h2>
+      <div id="dropZone" class="drop-zone" tabindex="0">
+        <strong>Drop photos here</strong>
+        <span>or</span>
+        <label class="file-label">Choose files
+          <input id="fileInput" type="file" accept="image/*" multiple hidden>
+        </label>
+      </div>
+      <div id="photoList" class="photo-list" role="list"></div>
+      <p class="hint">Two free sample photos are loaded to start. Click a panel on the cover, then pick which photo fills it.</p>
+    </section>
+
+    <section class="card">
+      <h2>2 · Layout &amp; grade</h2>
+      <div id="layoutBar" class="chip-bar" role="group" aria-label="Collage layout"></div>
+      <label class="field">Colour grade
+        <select id="gradeSelect"></select>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>3 · Lettering</h2>
+      <label class="field">Masthead title
+        <input id="titleInput" type="text" maxlength="18" value="LEONIDA">
+      </label>
+      <label class="field">Script accent
+        <input id="accentInput" type="text" maxlength="22" value="sunset strip">
+      </label>
+      <label class="field">Caption bar
+        <input id="captionInput" type="text" maxlength="30" value="MIDNIGHT RUN">
+      </label>
+      <label class="field">Badge stamp
+        <input id="badgeInput" type="text" maxlength="12" value="LEONIDA">
+      </label>
+      <label class="field">Wanted stars · <span id="heatValue">4</span>
+        <input id="heatRange" type="range" min="0" max="5" step="1" value="4">
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>4 · Frame the panel</h2>
+      <label class="field">Selected panel
+        <select id="panelSelect"></select>
+      </label>
+      <label class="field">Photo in this panel
+        <select id="panelPhotoSelect"></select>
+      </label>
+      <label class="field">Zoom
+        <input id="zoomRange" type="range" min="1" max="3" step="0.05" value="1">
+      </label>
+      <button id="fillAllBtn" type="button" class="ghost-btn">Fill every panel with this photo</button>
+      <p class="hint">Drag on the cover to reposition the selected panel. Scroll over the cover to zoom it.</p>
+    </section>
+
+    <section class="card" id="exportCard">
+      <h2>5 · Export</h2>
+      <label class="field">Post size
+        <select id="sizeSelect"></select>
+      </label>
+      <button id="exportBtn" type="button" class="export-btn">Export PNG</button>
+      <p id="statusLine" class="status" role="status"></p>
+    </section>
+  </aside>
+
+  <section class="stage">
+    <canvas id="coverCanvas" width="1080" height="1080" aria-label="Cover art preview"></canvas>
+  </section>
 </main>
-</div>
-<input id="file-input" type="file" accept="image/*" multiple hidden>
-<script type="module" src="src/main.js"></script>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>
