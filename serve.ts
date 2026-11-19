@@ -1,60 +1,71 @@
+// Leonida Sunset Studio — tiny local preview server (Node 22, stdlib only).
+// Run `node serve.ts` and open http://localhost:8080 to use the app.
+// It serves only files under app/, picks a MIME type by extension, and
+// refuses anything that resolves outside app/. Development use only.
+
+import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, join, normalize, extname } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-const rootDir = dirname(fileURLToPath(import.meta.url));
-const appDir = join(rootDir, 'app');
-const port = 8080;
-const mime = new Map();
-mime.set('.html', 'text/html; charset=utf-8');
-mime.set('.css', 'text/css; charset=utf-8');
-mime.set('.js', 'text/javascript; charset=utf-8');
-mime.set('.mjs', 'text/javascript; charset=utf-8');
-mime.set('.json', 'application/json; charset=utf-8');
-mime.set('.jpg', 'image/jpeg');
-mime.set('.jpeg', 'image/jpeg');
-mime.set('.png', 'image/png');
-mime.set('.svg', 'image/svg+xml');
-mime.set('.ttf', 'font/ttf');
-mime.set('.woff', 'font/woff');
-mime.set('.woff2', 'font/woff2');
-const server = createServer((req, res) => {
-  const rawUrl = req.url ?? '/';
-  const qIndex = rawUrl.indexOf('?');
-  const urlPath = qIndex >= 0 ? rawUrl.slice(0, qIndex) : rawUrl;
-  let decoded = '/';
+
+const appRoot = resolve(fileURLToPath(new URL('./app', import.meta.url)));
+const argv = process.argv.slice(2);
+const portFlag = argv.indexOf('--port');
+const wanted = portFlag === -1 ? 8080 : Number(argv[portFlag + 1]);
+const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.wasm': 'application/wasm',
+};
+
+const server = createServer((request, response) => {
+  let pathname: string;
   try {
-    decoded = decodeURIComponent(urlPath);
+    pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
   } catch {
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end('bad request');
+    response.writeHead(400).end('bad request');
     return;
   }
-  if (decoded === '/') {
-    decoded = '/index.html';
-  }
-  const safePath = normalize(join(appDir, '.' + decoded));
-  if (!safePath.startsWith(appDir)) {
-    res.writeHead(403, { 'Content-Type': 'text/plain' });
-    res.end('forbidden');
+  if (pathname.endsWith('/')) pathname += 'index.html';
+  const filePath = resolve(join(appRoot, normalize(pathname)));
+  if (filePath !== appRoot && !filePath.startsWith(appRoot + sep)) {
+    response.writeHead(403).end('forbidden');
     return;
   }
-  if (!existsSync(safePath)) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('not found');
+  let size: number;
+  try {
+    const info = statSync(filePath);
+    if (!info.isFile()) throw new Error('not a file');
+    size = info.size;
+  } catch {
+    response.writeHead(404).end('not found');
     return;
   }
-  if (!statSync(safePath).isFile()) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('not found');
-    return;
-  }
-  const ext = extname(safePath).toLowerCase();
-  const type = mime.get(ext) ?? 'application/octet-stream';
-  const data = readFileSync(safePath);
-  res.writeHead(200, { 'Content-Type': type, 'Content-Length': String(data.length) });
-  res.end(data);
+  response.writeHead(200, {
+    'content-type': MIME_TYPES[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': size,
+    'cache-control': 'no-store',
+  });
+  createReadStream(filePath).pipe(response);
 });
-server.listen(port, () => {
-  console.log('vice-frame serving app/ at http://localhost:' + port);
+
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Leonida Sunset Studio preview at http://localhost:${port}`);
 });
